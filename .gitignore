@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Windows
+*:Zone.Identifier
+
+# Build do ROS 2
+build/
+install/
+log/
+
+# Editor / IDE
+.vscode/
+.idea/
+.claude/
+
+# Tooling local
+.code-review-graph/
