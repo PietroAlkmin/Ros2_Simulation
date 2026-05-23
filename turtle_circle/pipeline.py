@@ -1,18 +1,3 @@
-"""
-Pipeline de visao computacional para o Turtle Draw.
-
-Estrategia em duas fases:
-  - Threshold isola o cachorro (mais escuro) do fundo (parede clara).
-    Isso elimina ruido de textura (tijolos, pelo) que atrapalharia uma
-    deteccao de bordas aplicada diretamente na foto.
-  - Filtro Sobel sobre a mascara binaria detecta a borda da silhueta.
-    Como a entrada e binaria e limpa, o Sobel destaca exatamente o
-    contorno externo do cachorro.
-
-Depois varremos linha a linha (estilo impressora) e a tartaruga traca
-cada trecho de borda em cada linha. Resultado: contorno do cachorro.
-"""
-
 import argparse
 import json
 import os
@@ -22,7 +7,6 @@ import numpy as np
 
 
 def carregar(caminho):
-    """Le a imagem do disco. Retorna array BGR uint8."""
     img = cv2.imread(caminho)
     if img is None:
         raise FileNotFoundError(caminho)
@@ -30,17 +14,12 @@ def carregar(caminho):
 
 
 def para_cinza(img_bgr):
-    """Converte BGR -> cinza pela media dos 3 canais. Resultado em [0, 1]."""
+    # Media dos 3 canais (BGR) -> tom de cinza em [0, 1]
     return img_bgr.mean(axis=2) / 255.0
 
 
 def redimensionar(img, nova_largura):
-    """
-    Reduz a imagem para 'nova_largura' pixels, mantendo proporcao.
-
-    Nearest-neighbor manual: para cada pixel da imagem reduzida,
-    pegamos o pixel mais proximo na imagem original.
-    """
+    # Reduz mantendo a proporcao, pegando o pixel mais proximo (sem interpolar)
     h, w = img.shape
     nova_altura = int(h * nova_largura / w)
     iy = (np.arange(nova_altura) * h / nova_altura).astype(int)
@@ -49,54 +28,38 @@ def redimensionar(img, nova_largura):
 
 
 def binarizar_escuros(img_cinza, limiar=0.45):
-    """Retorna True onde o pixel e escuro (= parte do cachorro)."""
+    # True onde o pixel e mais escuro que o limiar (= parte do cachorro)
     return img_cinza < limiar
 
 
 def sobel(img):
-    """
-    Filtro Sobel para detectar bordas.
-
-    Borda e uma mudanca brusca de intensidade. O Sobel calcula a derivada
-    da imagem em x e em y usando dois kernels 3x3, e a magnitude
-    sqrt(Gx^2 + Gy^2) mede a 'forca' da borda em cada pixel.
-    """
-    # Kernels classicos do Sobel (Kx detecta bordas verticais, Ky horizontais)
+    # Filtro Sobel: detecta mudancas bruscas de intensidade (bordas).
+    # Kx pega variacao horizontal, Ky pega variacao vertical.
     Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=float)
     Ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=float)
 
     img = img.astype(float)
     h, w = img.shape
-    # Padding "edge" replica as bordas para a convolucao nao sair do array
+    # Padding "edge" replica as bordas para o filtro nao sair do array
     pad = np.pad(img, 1, mode='edge')
     gx = np.zeros_like(img)
     gy = np.zeros_like(img)
-    # Convolucao manual: cada (u,v) e uma janela deslocada da imagem.
-    # Em vez de iterar pixel por pixel, somamos as 9 janelas vetorizadas
-    # multiplicadas pelos pesos do kernel - isso e equivalente a aplicar
-    # o kernel em cada pixel, mas usando operacoes numpy.
+    # Soma das 9 janelas deslocadas multiplicadas pelos pesos do kernel
     for u in range(3):
         for v in range(3):
             janela = pad[u:u + h, v:v + w]
             gx += Kx[u, v] * janela
             gy += Ky[u, v] * janela
-    # Magnitude do gradiente: mede a "forca" da borda em cada pixel
+    # Magnitude: mede a "forca" da borda em cada pixel
     return np.sqrt(gx ** 2 + gy ** 2)
 
 
 def varrer_linhas(bordas):
-    """
-    Varredura horizontal estilo impressora.
-
-    Para cada linha, agrupa pixels de borda contiguos num segmento. Usa
-    np.diff: a derivada da linha binaria marca onde comecam (+1) e
-    terminam (-1) os trechos True.
-    """
+    # Varre cada linha da esquerda para a direita e agrupa pixels de borda
+    # contiguos num segmento. np.diff marca onde comeca (+1) e termina (-1)
+    # cada trecho True; prepend/append=0 capturam trechos colados nas bordas.
     segmentos = []
     for i, linha in enumerate(bordas):
-        # Truque do np.diff: derivada de uma linha binaria marca +1 onde
-        # comeca um trecho True e -1 onde termina. prepend/append=0
-        # garante que detectamos trechos colados nas bordas da linha.
         d = np.diff(linha.astype(int), prepend=0, append=0)
         inicios = np.where(d == 1)[0]
         fins = np.where(d == -1)[0] - 1
@@ -106,16 +69,11 @@ def varrer_linhas(bordas):
 
 
 def mapear_turtlesim(pontos, h, w, tam=11.0, margem=0.5):
-    """
-    Converte (i, j) da imagem para (x, y) do turtlesim.
-
-    A imagem tem origem no topo (y para baixo); o turtlesim no chao
-    (y para cima), canvas ~11x11. Mantem proporcao e centraliza.
-    """
+    # Converte (i, j) da imagem para (x, y) do turtlesim
     util = tam - 2 * margem
     # Mesma escala em x e y preserva a proporcao da imagem
     escala = min(util / w, util / h)
-    # Offsets centralizam a silhueta no canvas
+    # Centraliza a silhueta no canvas
     off_x = (tam - w * escala) / 2
     off_y = (tam - h * escala) / 2
     # (h - i) inverte o eixo y: imagem tem origem no topo, turtlesim no chao
@@ -124,7 +82,6 @@ def mapear_turtlesim(pontos, h, w, tam=11.0, margem=0.5):
 
 def executar(imagem, saida='output', largura=70,
              limiar_intensidade=0.45, limiar_borda=0.5):
-    """Roda a pipeline inteira e salva os waypoints em contour.json."""
     os.makedirs(saida, exist_ok=True)
 
     # As 5 etapas da pipeline em sequencia

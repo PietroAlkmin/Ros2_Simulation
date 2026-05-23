@@ -2,6 +2,10 @@
 
 Pega uma foto, isola o objeto escuro do fundo claro com **threshold**, detecta o contorno da silhueta com **filtro Sobel**, e a tartaruga do `turtlesim` percorre o contorno varrendo linha a linha.
 
+🎥 **Vídeo de apresentação:** https://drive.google.com/file/d/14-CK503_69tXFhXrEbes5z0-x6SX9jyC/view?usp=sharing
+
+📄 **Relatório técnico:** [RELATORIO.md](RELATORIO.md)
+
 ## Estrutura
 
 ```

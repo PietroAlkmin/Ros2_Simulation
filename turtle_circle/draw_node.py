@@ -1,17 +1,3 @@
-"""
-No ROS2 que le os waypoints do contour.json e faz a tartaruga
-percorrer cada contorno usando controle proporcional.
-
-Para cada waypoint alvo:
-  rho   = distancia ate o alvo
-  alpha = diferenca entre angulo desejado e angulo atual
-  v_lin = Kp_lin * rho      (so avanca se o erro angular for pequeno)
-  v_ang = Kp_ang * alpha
-
-Quando termina um contorno, levanta a caneta, vai ate o inicio do
-proximo contorno, abaixa a caneta e continua.
-"""
-
 import json
 import math
 import os
@@ -24,12 +10,8 @@ from turtlesim.srv import SetPen
 
 
 def normalizar(a):
-    """Mantem angulo em (-pi, pi].
-
-    Truque: atan2(sin(a), cos(a)) tira a periodicidade e devolve sempre o
-    angulo equivalente no intervalo principal. Sem isso, a tartaruga
-    ocasionalmente decide girar o caminho longo (>180 graus).
-    """
+    # Mantem o angulo no intervalo (-pi, pi].
+    # Sem isso, a tartaruga ocasionalmente decide girar pelo caminho longo.
     return math.atan2(math.sin(a), math.cos(a))
 
 
@@ -58,8 +40,8 @@ class TurtleDraw(Node):
         self.idx_traco = 0
         self.idx_wp = 0
         self.estado = 'WAIT'    # WAIT -> TRAVEL -> DRAW -> DONE
-        # rclpy: a Future do call_async precisa ter referencia viva ate
-        # completar, senao o garbage collector descarta a requisicao
+        # Mantem referencias vivas das chamadas do set_pen para nao serem
+        # descartadas pelo garbage collector antes de completarem
         self._pendentes = []
         self.create_timer(0.05, self.controle)
 
@@ -67,7 +49,7 @@ class TurtleDraw(Node):
         self.pose = msg
 
     def set_pen(self, abaixada):
-        """Levanta ou abaixa a caneta. Nao espera resposta."""
+        # Levanta ou abaixa a caneta. Nao espera resposta.
         if not self.cli_pen.service_is_ready():
             return
         req = SetPen.Request()
@@ -118,17 +100,18 @@ class TurtleDraw(Node):
                     self.estado = 'TRAVEL'
             return
 
-        # Controle proporcional (go-to-goal classico):
-        #   alpha = diferenca entre o angulo desejado e o angulo atual
-        #   v_lin proporcional a distancia (rho), v_ang proporcional a alpha
+        # Controle proporcional:
+        #   rho   = distancia ate o alvo
+        #   alpha = diferenca entre angulo desejado e angulo atual
+        #   v_lin = Kp_lin * rho   (so avanca se o erro angular for pequeno)
+        #   v_ang = Kp_ang * alpha
         alpha = normalizar(math.atan2(dy, dx) - self.pose.theta)
         # Se o erro angular for grande, gira primeiro sem avancar.
-        # Caso contrario a tartaruga desenharia arcos no carry-return
-        # entre o fim de uma linha e o inicio da proxima.
+        # Senao a tartaruga desenharia curvas entre uma linha e outra.
         v_lin = 0.0 if abs(alpha) > self.LIMIAR_GIRO else self.KP_LIN * rho
         v_ang = self.KP_ANG * alpha
 
-        # Satura velocidades para evitar comandos absurdos no turtlesim
+        # Limita as velocidades para nao mandar comandos absurdos
         cmd = Twist()
         cmd.linear.x = max(-2.0, min(2.0, v_lin))
         cmd.angular.z = max(-4.0, min(4.0, v_ang))
